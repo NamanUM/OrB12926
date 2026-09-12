@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DevOps Knowledge & Architecture Orb</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #070a12; font-family: 'Inter', system-ui, sans-serif; color: #e2e8f0; }
+    #3d-graph { width: 100vw; height: 100vh; }
+    #drawer {
+      position: fixed; top: 0; right: -500px; width: 460px; height: 100vh;
+      background: rgba(13, 19, 33, 0.96); backdrop-filter: blur(12px);
+      border-left: 1px solid #1e293b; box-shadow: -10px 0 30px rgba(0,0,0,0.8);
+      transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1); padding: 24px;
+      box-sizing: border-box; overflow-y: auto; z-index: 100;
+    }
+    #drawer.active { right: 0; }
+    .close-btn { float: right; cursor: pointer; color: #64748b; font-size: 24px; font-weight: bold; }
+    .close-btn:hover { color: #f43f5e; }
+    .node-title { color: #38bdf8; margin: 0 0 4px 0; font-size: 1.5rem; font-weight: 700; }
+    .domain-tag { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; margin-bottom: 20px; color: #000; }
+    .tab-bar { display: flex; gap: 8px; border-bottom: 1px solid #1e293b; padding-bottom: 8px; margin-bottom: 16px; }
+    .tab-btn { background: #0f172a; border: 1px solid #334155; color: #94a3b8; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; }
+    .tab-btn.active { background: #0284c7; color: #fff; border-color: #38bdf8; }
+    .tab-content { display: none; font-size: 0.85rem; line-height: 1.6; color: #cbd5e1; }
+    .tab-content.active { display: block; }
+    h4 { color: #38bdf8; margin: 16px 0 6px 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #1e293b; padding-bottom: 4px; }
+    ul { padding-left: 18px; margin: 6px 0; }
+    li { margin-bottom: 6px; }
+    pre { background: #020617; border: 1px solid #1e293b; padding: 12px; border-radius: 8px; font-size: 0.78rem; color: #38bdf8; overflow-x: auto; font-family: 'Fira Code', monospace; }
+  </style>
+  <script src="https://unpkg.com/3d-force-graph"></script>
+</head>
+<body>
+  <div id="3d-graph"></div>
+
+  <div id="drawer">
+    <span class="close-btn" onclick="closeDrawer()">&times;</span>
+    <h2 id="d-title" class="node-title">Node</h2>
+    <span id="d-domain" class="domain-tag">Domain</span>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('tab-context')">Context</button>
+      <button class="tab-btn" onclick="switchTab('tab-bugs')">Internet RCA</button>
+      <button class="tab-btn" onclick="switchTab('tab-cli')">CLI Playbook</button>
+      <button class="tab-btn" onclick="switchTab('tab-code')">Fix Manifest</button>
+    </div>
+
+    <div id="tab-context" class="tab-content active">
+      <h4>Past Search Context</h4>
+      <ul id="d-history"></ul>
+      <h4>Upstream Prerequisites</h4>
+      <ul id="d-prereqs"></ul>
+      <h4>Downstream Blast Radius</h4>
+      <ul id="d-downstream"></ul>
+    </div>
+
+    <div id="tab-bugs" class="tab-content">
+      <h4>Real-World Internet Bugs</h4>
+      <ul id="d-bugs"></ul>
+      <h4>Root Cause Analysis (RCA)</h4>
+      <p id="d-rca"></p>
+    </div>
+
+    <div id="tab-cli" class="tab-content">
+      <h4>Step-by-Step Diagnostic Sequence</h4>
+      <pre><code id="d-cli"></code></pre>
+    </div>
+
+    <div id="tab-code" class="tab-content">
+      <h4>Production Fix Manifest</h4>
+      <pre><code id="d-code"></code></pre>
+    </div>
+  </div>
+
+  <script>
+    // Sample Data Schema
+    const gData = {
+      nodes: [
+        { id: 1, name: "Terraform (IaC)", domain: "IaC & Automation", color: "#10b981", history: ["Modular infrastructure provisioning", "Variable syntax var.location vs 'var.location'"], prereqs: ["AWS IAM", "S3 State Store"], downstream: ["Kops K8s Cluster", "Cloud Infrastructure"], bugs: ["DynamoDB state lock deadlock", "Quoted variable string interpolation error"], rca: "Interrupted pipeline apply runs leave stale locks in DynamoDB table.", cli: "aws dynamodb get-item --table-name terraform-locks ...\nterraform force-unlock <LOCK-ID>", code: "terraform {\n  backend \"s3\" {\n    bucket = \"tf-state\"\n    dynamodb_table = \"locks\"\n  }\n}" },
+        { id: 2, name: "Kubernetes (Kops)", domain: "Orchestration", color: "#06b6d4", history: ["Migrating Docker Compose dev envs to Kops K8s"], prereqs: ["Docker Compose", "AWS IAM", "Route53"], downstream: ["Java Microservices Deployment"], bugs: ["OOMKilled exit code 137", "S3 state store synchronization drift"], rca: "Kernel OOM Killer terminates containers when memory usage exceeds cgroup limits.", cli: "kubectl get pods -n dev\nkectl describe pod <pod-name>\nkubectl logs <pod-name> --previous", code: "resources:\n  requests:\n    memory: \"512Mi\"\n  limits:\n    memory: \"1024Mi\"" }
+      ],
+      links: [
+        { source: 1, target: 2 }
+      ]
+    };
+
+    const Graph = ForceGraph3D()(document.getElementById('3d-graph'))
+      .graphData(gData)
+      .nodeLabel('name')
+      .nodeColor('color')
+      .nodeRelSize(8)
+      .onNodeClick(node => {
+        document.getElementById('d-title').innerText = node.name;
+        document.getElementById('d-domain').innerText = node.domain;
+        document.getElementById('d-domain').style.background = node.color;
+        document.getElementById('d-history').innerHTML = node.history.map(h => `<li>${h}</li>`).join('');
+        document.getElementById('d-prereqs').innerHTML = node.prereqs.map(p => `<li>${p}</li>`).join('');
+        document.getElementById('d-downstream').innerHTML = node.downstream.map(d => `<li>${d}</li>`).join('');
+        document.getElementById('d-bugs').innerHTML = node.bugs.map(b => `<li>${b}</li>`).join('');
+        document.getElementById('d-rca').innerText = node.rca;
+        document.getElementById('d-cli').innerText = node.cli;
+        document.getElementById('d-code').innerText = node.code;
+
+        document.getElementById('drawer').classList.add('active');
+
+        const distance = 40;
+        const distRatio = 1 + distance/Math.hypot(node.x, node.y, node.z);
+        Graph.cameraPosition(
+          { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+          node,
+          2500
+        );
+      });
+
+    function closeDrawer() { document.getElementById('drawer').classList.remove('active'); }
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+  </script>
+</body>
+</html>
